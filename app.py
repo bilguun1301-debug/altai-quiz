@@ -2,19 +2,21 @@ import streamlit as st
 import google.generativeai as genai
 from datetime import datetime
 import uuid
+import json
+import os
 
-# 1. ҮНДСЭН ТОХИРГОО БА FACEBOOK / MESSENGER ДИЗАЙН
-st.set_page_config(page_title="Алтай Facebook & Messenger", page_icon="📘", layout="centered")
+# 1. ҮНДСЭН ТОХИРГОО БА ДИЗАЙН
+st.set_page_config(page_title="Алтай Сүлжээ & AI", page_icon="🏔️", layout="centered")
 
 TEACHER_SECRET_CODE = "ALTAI2026"  # Багш болж бүртгүүлэх нууц код
+DATA_FILE = "altai_data.json"      # Бүртгэл, чат, постуудыг хадгалах файл
 
 st.markdown("""
 <style>
     [data-testid="stSidebar"] {display: none;}
     
-    /* Facebook цэнхэр толгой */
-    .fb-navbar {
-        background-color: #1877F2;
+    .top-navbar {
+        background: linear-gradient(90deg, #1877F2 0%, #0056b3 100%);
         color: white;
         padding: 12px 18px;
         border-radius: 12px;
@@ -25,7 +27,6 @@ st.markdown("""
         box-shadow: 0 2px 8px rgba(24, 119, 242, 0.3);
     }
     
-    /* Стори карт */
     .story-box {
         background: linear-gradient(135deg, #1877F2 0%, #00C6FF 100%);
         color: white;
@@ -39,7 +40,6 @@ st.markdown("""
         box-shadow: 0 2px 5px rgba(0,0,0,0.15);
     }
     
-    /* Messenger мессеж хөөс */
     .msg-me {
         background-color: #0084FF;
         color: white;
@@ -67,39 +67,70 @@ if "GOOGLE_API_KEY" in st.secrets:
 else:
     st.error("⚠️ Streamlit Secrets хэсэгт GOOGLE_API_KEY тохируулаагүй байна!")
 
-# 2. ӨГӨГДЛИЙН САН (SESSION STATE)
-if "users" not in st.session_state:
-    st.session_state.users = {}  # {нэр: {password, role, avatar, friends: [], requests: []}}
+# 2. ӨГӨГДӨЛ ХАДГАЛАХ БА УНШИХ ФУНКЦҮҮД (БҮРТГЭЛ УСТАХГҮЙ БОЛГОХ)
+def load_data():
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {
+        "users": {},
+        "stories": [
+            {"user": "Алтай Сүлжээ", "avatar": "🏔️", "text": "Найзуудаа нэмж, тоглоом тоглоорой!", "time": "Саяхан"}
+        ],
+        "posts": [
+            {"id": "p1", "user": "Алтай Сүлжээ", "role": "Систем", "avatar": "🏔️", "text": "Алтай Сүлжээ болон AI суралцахуйн платформд тавтай морил!", "likes": [], "comments": [], "time": "Өнөөдөр"}
+        ],
+        "private_chats": {},
+        "custom_groups": {
+            "Нийт сургууль": {"creator": "Систем", "members": "ALL", "messages": []}
+        },
+        "ai_history": {}
+    }
+
+def save_data():
+    data = {
+        "users": st.session_state.users,
+        "stories": st.session_state.stories,
+        "posts": st.session_state.posts,
+        "private_chats": st.session_state.private_chats,
+        "custom_groups": st.session_state.custom_groups,
+        "ai_history": st.session_state.ai_history
+    }
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+# Анх ачаалах үед файлаас мэдээллээ унших
+if "data_loaded" not in st.session_state:
+    saved = load_data()
+    st.session_state.users = saved["users"]
+    st.session_state.stories = saved["stories"]
+    st.session_state.posts = saved["posts"]
+    st.session_state.private_chats = saved["private_chats"]
+    st.session_state.custom_groups = saved["custom_groups"]
+    st.session_state.ai_history = saved["ai_history"]
+    st.session_state.data_loaded = True
+
 if "current_user" not in st.session_state:
     st.session_state.current_user = None
 if "nav" not in st.session_state:
     st.session_state.nav = "feed"
-if "stories" not in st.session_state:
-    st.session_state.stories = [
-        {"user": "Алтай Сүлжээ", "avatar": "📘", "text": "Найзуудаа нэмээд чат бичээрэй!", "time": "Саяхан"}
-    ]
-if "posts" not in st.session_state:
-    st.session_state.posts = [
-        {"id": "p1", "user": "Алтай Сүлжээ", "role": "Систем", "avatar": "📘", "text": "Шинэ Facebook & Messenger загварт тавтай морил! Пост оруулж, сэтгэгдэл бичиж туршаарай.", "likes": [], "comments": [], "time": "Өнөөдөр"}
-    ]
-if "private_chats" not in st.session_state:
-    st.session_state.private_chats = {}  # {"Бат_Дорж": [messages]}
-if "custom_groups" not in st.session_state:
-    st.session_state.custom_groups = {
-        "Нийт сургууль": {"creator": "Систем", "members": "ALL", "messages": []}
-    }
-if "ai_history" not in st.session_state:
-    st.session_state.ai_history = {}
+if "quiz_question" not in st.session_state:
+    st.session_state.quiz_question = None
 
-# 3. FACEBOOK НЭВТРЭХ & БҮРТГҮҮЛЭХ
+# 3. НЭВТРЭХ & БҮРТГҮҮЛЭХ
 if st.session_state.current_user is None:
-    st.markdown("<div class='fb-navbar'><h2 style='margin:0;'>facebook • Алтай</h2><span>Сургуулийн сүлжээ</span></div>", unsafe_allow_html=True)
+    st.markdown("<div class='top-navbar'><h2 style='margin:0;'>🏔️ Алтай Сүлжээ</h2><span>Ухаалаг сургуулийн орчин</span></div>", unsafe_allow_html=True)
     
     t1, t2 = st.tabs(["🔑 Нэвтрэх", "📝 Шинэ хаяг нээх"])
     with t1:
         l_name = st.text_input("Нэвтрэх нэр", key="l_u")
         l_pass = st.text_input("Нууц үг", type="password", key="l_p")
         if st.button("Нэвтрэх", use_container_width=True, type="primary"):
+            # Файлаас хамгийн сүүлийн бүртгэлийг дахин шалгах
+            st.session_state.users = load_data()["users"]
             if l_name in st.session_state.users and st.session_state.users[l_name]["password"] == l_pass:
                 st.session_state.current_user = l_name
                 st.rerun()
@@ -112,10 +143,11 @@ if st.session_state.current_user is None:
         t_code = ""
         if r_role == "Багш":
             t_code = st.text_input("🔒 Багшийн нууц код", type="password")
-        r_avatar = st.selectbox("Профайл зураг", ["🧑‍🎓", "👩‍🎓", "👨‍🏫", "👩‍🏫", "🦁", "🦅", "🐺", "🐼", "🚀"])
+        r_avatar = st.selectbox("Профайл дүрс", ["🧑‍🎓", "👩‍🎓", "👨‍🏫", "👩‍🏫", "🦁", "🦅", "🐺", "🐼", "🚀", "🦊"])
         r_pass = st.text_input("Нууц үг", type="password", key="r_p")
         
         if st.button("Бүртгүүлэх", use_container_width=True):
+            st.session_state.users = load_data()["users"]
             if not r_name or not r_pass:
                 st.warning("Бүх талбарыг бөглөнө үү.")
             elif r_name in st.session_state.users:
@@ -124,14 +156,11 @@ if st.session_state.current_user is None:
                 st.error("❌ Багшийн нууц код буруу байна!")
             else:
                 st.session_state.users[r_name] = {
-                    "password": r_pass,
-                    "role": r_role,
-                    "avatar": r_avatar,
-                    "friends": [],
-                    "requests": []
+                    "password": r_pass, "role": r_role, "avatar": r_avatar, "friends": [], "requests": []
                 }
                 st.session_state.ai_history[r_name] = []
-                st.success("✅ Амжилттай бүртгэгдлээ! Одоо нэвтэрч орно уу.")
+                save_data()  # Бүртгэлийг шууд файлд хадгалах
+                st.success("✅ Бүртгэл хадгалагдлаа! Одоо 'Нэвтрэх' хэсгээр орно уу.")
     st.stop()
 
 # НЭВТЭРСЭН ХЭРЭГЛЭГЧ
@@ -139,19 +168,18 @@ me = st.session_state.current_user
 my_data = st.session_state.users[me]
 req_count = len(my_data["requests"])
 
-# ДЭЭД ТОЛГОЙ
-st.markdown(f"<div class='fb-navbar'><h3 style='margin:0;'>facebook</h3><span>{my_data['avatar']} <b>{me}</b> ({my_data['role']})</span></div>", unsafe_allow_html=True)
+st.markdown(f"<div class='top-navbar'><h3 style='margin:0;'>🏔️ Алтай Сүлжээ</h3><span>{my_data['avatar']} <b>{me}</b> ({my_data['role']})</span></div>", unsafe_allow_html=True)
 
 # ==========================================
-# 1. FACEBOOK НҮҮР ХУУДАС (FEED & STORIES)
+# 1. НҮҮР ХУУДАС (FEED & STORIES)
 # ==========================================
 if st.session_state.nav == "feed":
-    # Стори хэсэг
-    with st.expander("➕ Стори нэмэх (Story)"):
+    with st.expander("➕ Стори нэмэх"):
         s_txt = st.text_input("Стори дээр юу бичих вэ?", max_chars=70)
         if st.button("Стори оруулах"):
             if s_txt:
                 st.session_state.stories.insert(0, {"user": me, "avatar": my_data["avatar"], "text": s_txt, "time": datetime.now().strftime("%H:%M")})
+                save_data()
                 st.rerun()
 
     s_cols = st.columns(min(len(st.session_state.stories), 4))
@@ -160,33 +188,34 @@ if st.session_state.nav == "feed":
             st.markdown(f"<div class='story-box'><div style='font-size:22px;'>{st_item['avatar']}</div><div style='font-size:11px;'>{st_item['text']}</div><div style='font-size:10px; opacity:0.9;'><b>{st_item['user']}</b></div></div>", unsafe_allow_html=True)
 
     st.write("")
-    # Пост бичих
     with st.container(border=True):
-        p_txt = st.text_area("Юу бодож байна даа?", placeholder=f"{me}, юу бодож байна?", height=68)
+        st.markdown(f"**{my_data['avatar']} {me}** • Юу бодож байна даа?")
+        p_txt = st.text_area("Нийтлэл бичих...", placeholder=f"{me}, энд юу бодож буйгаа бичнэ үү...", height=68, label_visibility="collapsed")
         if st.button("Нийтлэх", type="primary", use_container_width=True):
             if p_txt.strip():
                 st.session_state.posts.insert(0, {
                     "id": str(uuid.uuid4()), "user": me, "role": my_data["role"], "avatar": my_data["avatar"],
                     "text": p_txt, "likes": [], "comments": [], "time": datetime.now().strftime("%H:%M")
                 })
+                save_data()
                 st.rerun()
 
-    # Постууд
     for post in st.session_state.posts:
         with st.container(border=True):
             c1, c2 = st.columns([5, 1])
             with c1:
                 r_label = "🛡️ Багш" if post["role"] == "Багш" else post["role"]
-                st.markdown(f"**{post['avatar']} {post['user']}** • <small style='color:gray;'>{r_label} • {post['time']}</small>", unsafe_allow_html=True)
+                st.markdown(f"### {post['avatar']} {post['user']} <small style='font-size:12px; color:gray;'>({r_label})</small>", unsafe_allow_html=True)
+                st.caption(f"🕒 {post['time']}")
             with c2:
                 if post["user"] == me:
-                    if st.button("🗑️", key=f"dp_{post['id']}"):
+                    if st.button("🗑️", key=f"dp_{post['id']}", help="Устгах"):
                         st.session_state.posts = [x for x in st.session_state.posts if x["id"] != post["id"]]
+                        save_data()
                         st.rerun()
             
-            st.write(post["text"])
+            st.markdown(f"<div style='font-size:16px; margin: 10px 0;'>{post['text']}</div>", unsafe_allow_html=True)
             
-            # Like ба Comment
             liked = me in post["likes"]
             like_label = f"💙 Таалагдсан ({len(post['likes'])})" if liked else f"👍 Таалагдлаа ({len(post['likes'])})"
             if st.button(like_label, key=f"lk_{post['id']}"):
@@ -194,12 +223,13 @@ if st.session_state.nav == "feed":
                     post["likes"].remove(me)
                 else:
                     post["likes"].append(me)
+                save_data()
                 st.rerun()
                 
-            # Сэтгэгдэл харах ба бичих
             if post["comments"]:
+                st.divider()
                 for cm in post["comments"]:
-                    st.markdown(f"<div style='background:#F0F2F5; padding:6px 10px; border-radius:10px; margin:4px 0; font-size:13px;'><b>{cm['user']}:</b> {cm['text']}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='background:#F0F2F5; padding:8px 12px; border-radius:12px; margin:6px 0; font-size:13px;'><b>{cm['avatar']} {cm['user']}:</b> {cm['text']}</div>", unsafe_allow_html=True)
             
             cc1, cc2 = st.columns([4, 1])
             with cc1:
@@ -207,16 +237,16 @@ if st.session_state.nav == "feed":
             with cc2:
                 if st.button("Илгээх", key=f"cmb_{post['id']}"):
                     if new_cm.strip():
-                        post["comments"].append({"user": me, "text": new_cm})
+                        post["comments"].append({"user": me, "avatar": my_data["avatar"], "text": new_cm})
+                        save_data()
                         st.rerun()
 
 # ==========================================
-# 2. НАЙЗУУД (FRIENDS & REQUESTS)
+# 2. НАЙЗУУД
 # ==========================================
 elif st.session_state.nav == "friends":
     st.subheader("👥 Найзууд ба Хүсэлтүүд")
     
-    # Ирсэн найзын хүсэлтүүд
     if my_data["requests"]:
         st.markdown("#### 📩 Ирсэн найзын хүсэлтүүд")
         for req_user in list(my_data["requests"]):
@@ -229,12 +259,13 @@ elif st.session_state.nav == "friends":
                         my_data["requests"].remove(req_user)
                         my_data["friends"].append(req_user)
                         st.session_state.users[req_user]["friends"].append(me)
+                        save_data()
                         st.rerun()
                     if col3.button("❌ Татгалзах", key=f"dec_{req_user}"):
                         my_data["requests"].remove(req_user)
+                        save_data()
                         st.rerun()
     
-    # Миний найзууд
     st.markdown(f"#### 🤝 Миний найзууд ({len(my_data['friends'])})")
     if not my_data["friends"]:
         st.info("Танд одоогоор найз алга. Доорх жагсаалтаас найзын хүсэлт илгээгээрэй!")
@@ -245,7 +276,6 @@ elif st.session_state.nav == "friends":
                 st.markdown(f"- {f_info['avatar']} **{fr}** ({f_info['role']})")
 
     st.divider()
-    # Бусад хүмүүсийг хайж найз болох
     st.markdown("#### 🔍 Хүмүүс таних уу? (Найз нэмэх)")
     search_q = st.text_input("Нэрээр хайх...", placeholder="Хайх хүнийхээ нэрийг бичнэ үү")
     for uname, udata in st.session_state.users.items():
@@ -259,20 +289,19 @@ elif st.session_state.nav == "friends":
                     else:
                         if c2.button("➕ Найз болох", key=f"add_{uname}", type="primary"):
                             udata["requests"].append(me)
+                            save_data()
                             st.rerun()
 
 # ==========================================
-# 3. MESSENGER (ХУВИЙН ЧАТ & ӨӨРСДӨӨ ГРУПП ҮҮСГЭХ)
+# 3. ЧАТ (ХУВИЙН БА ГРУПП)
 # ==========================================
 elif st.session_state.nav == "messenger":
-    st.subheader("💬 Messenger")
-    
+    st.subheader("💬 Зурвас & Чат")
     m_mode = st.radio("Төрөл:", ["👤 Найзтайгаа чатлах", "👥 Групп чат"], horizontal=True)
     
-    # --- ХУВИЙН ЧАТ ---
     if m_mode == "👤 Найзтайгаа чатлах":
         if not my_data["friends"]:
-            st.warning("Чатлахын тулд эхлээд 'Найзууд' цэснээс хүмүүстэй найз болоорой!")
+            st.warning("Чатлахын тулд эхлээд 'Найз' цэснээс хүмүүстэй найз болоорой!")
         else:
             target_friend = st.selectbox("Найзаа сонгох:", my_data["friends"])
             chat_key = "_".join(sorted([me, target_friend]))
@@ -290,6 +319,7 @@ elif st.session_state.nav == "messenger":
                         c1.markdown(f"<div style='text-align:right;'><span class='msg-me'>{m['text']}</span><div style='font-size:10px; color:gray;'>{m['time']}</div></div>", unsafe_allow_html=True)
                         if c2.button("🗑️", key=f"dm_{m['id']}"):
                             st.session_state.private_chats[chat_key] = [x for x in msgs if x["id"] != m["id"]]
+                            save_data()
                             st.rerun()
                     else:
                         st.markdown(f"<div style='text-align:left; margin-bottom:6px;'><span class='msg-other'>{m['text']}</span><div style='font-size:10px; color:gray;'>{m['time']}</div></div>", unsafe_allow_html=True)
@@ -299,9 +329,8 @@ elif st.session_state.nav == "messenger":
                 st.session_state.private_chats[chat_key].append({
                     "id": str(uuid.uuid4()), "user": me, "text": txt, "time": datetime.now().strftime("%H:%M")
                 })
+                save_data()
                 st.rerun()
-
-    # --- ГРУПП ЧАТ ҮҮСГЭХ БА ЧАТЛАХ ---
     else:
         with st.expander("➕ Шинэ групп чат үүсгэх"):
             g_name = st.text_input("Группийн нэр")
@@ -309,16 +338,134 @@ elif st.session_state.nav == "messenger":
             if st.button("Групп үүсгэх", type="primary"):
                 if g_name and g_name not in st.session_state.custom_groups:
                     st.session_state.custom_groups[g_name] = {
-                        "creator": me,
-                        "members": [me] + g_members,
-                        "messages": []
+                        "creator": me, "members": [me] + g_members, "messages": []
                     }
+                    save_data()
                     st.success(f"'{g_name}' групп үүслээ!")
                     st.rerun()
                 else:
                     st.error("Группийн нэр оруулна уу эсвэл ийм нэртэй групп байна.")
 
-        # Зөвхөн өөрийн орсон группуудыг харуулах
         my_groups = [gn for gn, gd in st.session_state.custom_groups.items() if gd["members"] == "ALL" or me in gd["members"]]
         sel_g = st.selectbox("Групп сонгох:", my_groups)
-        g_data = st.session_state.custom_groups
+        g_data = st.session_state.custom_groups[sel_g]
+        
+        g_box = st.container(height=320, border=True)
+        with g_box:
+            for m in g_data["messages"]:
+                if m["user"] == me:
+                    c1, c2 = st.columns([6, 1])
+                    c1.markdown(f"<div style='text-align:right;'><span class='msg-me'>{m['text']}</span><div style='font-size:10px; color:gray;'>{m['time']}</div></div>", unsafe_allow_html=True)
+                    if c2.button("🗑️", key=f"gm_{m['id']}"):
+                        g_data["messages"] = [x for x in g_data["messages"] if x["id"] != m["id"]]
+                        save_data()
+                        st.rerun()
+                else:
+                    st.markdown(f"<div style='text-align:left; margin-bottom:6px;'><small><b>{m['avatar']} {m['user']}</b></small><br><span class='msg-other'>{m['text']}</span><div style='font-size:10px; color:gray;'>{m['time']}</div></div>", unsafe_allow_html=True)
+
+        g_txt = st.chat_input(f"{sel_g} группт бичих...")
+        if g_txt:
+            g_data["messages"].append({
+                "id": str(uuid.uuid4()), "user": me, "avatar": my_data["avatar"], "text": g_txt, "time": datetime.now().strftime("%H:%M")
+            })
+            save_data()
+            st.rerun()
+
+# ==========================================
+# 4. ЖИЖИГ ТОГЛООМ (QUIZ)
+# ==========================================
+elif st.session_state.nav == "game":
+    st.subheader("🎮 Алтай Тоглоом & Quiz")
+    st.write("Мэдлэгээ сорих хөгжөөнт асуулт хариулт!")
+    
+    q_topic = st.selectbox("Сорилын сэдэв:", ["Монголын түүх, газарзүй", "Математик ба логик", "Мэдээлэл зүй ба технологи"])
+    
+    if st.button("🚀 Шинэ асуулт үүсгэх", type="primary"):
+        try:
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            prompt = f"'{q_topic}' сэдвээр дунд ангийн сурагчдад зориулсан 1 сонирхолтой сонгох тест (A, B, C, D хувилбартай) монгол хэлээр зохиож өгнө үү. Зөв хариултыг нь хамгийн доор нь нууцлалтайгаар 'ЗӨВ_ХАРИУЛТ: [Үсэг]' гэж бичээрэй."
+            res = model.generate_content(prompt)
+            st.session_state.quiz_question = res.text
+        except Exception as e:
+            st.error(f"Алдаа гарлаа: {e}")
+
+    if st.session_state.quiz_question:
+        with st.container(border=True):
+            st.markdown(st.session_state.quiz_question)
+        
+        ans_choice = st.radio("Таны хариулт:", ["A", "B", "C", "D"], horizontal=True)
+        if st.button("Хариу шалгах"):
+            st.success(f"Таны сонгосон хариулт: **{ans_choice}**. Дээрх асуултын тайлбар болон зөв хариултыг шалгаарай!")
+
+# ==========================================
+# 5. AI БАГШ (ТҮҮХ ХАДГАЛАГДАНА)
+# ==========================================
+elif st.session_state.nav == "ai":
+    c1, c2 = st.columns([3, 1])
+    c1.subheader("🤖 AI Багш")
+    if c2.button("Түүх устгах"):
+        st.session_state.ai_history[me] = []
+        save_data()
+        st.rerun()
+        
+    ai_box = st.container(height=360, border=True)
+    with ai_box:
+        for ch in st.session_state.ai_history.get(me, []):
+            with st.chat_message(ch["role"]):
+                st.markdown(ch["content"])
+                
+    ai_q = st.chat_input("AI багшаас асуух зүйлээ бичнэ үү...")
+    if ai_q:
+        if me not in st.session_state.ai_history:
+            st.session_state.ai_history[me] = []
+        st.session_state.ai_history[me].append({"role": "user", "content": ai_q})
+        try:
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            ans = model.generate_content(f"Чи бол сурагчдад тусалдаг AI багш. Дараах асуултад монгол хэлээр ойлгомжтой хариулна уу: {ai_q}")
+            st.session_state.ai_history[me].append({"role": "assistant", "content": ans.text})
+            save_data()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Алдаа: {e}")
+
+# ==========================================
+# 6. ПРОФАЙЛ & ГАРАХ
+# ==========================================
+elif st.session_state.nav == "profile":
+    st.subheader(f"{my_data['avatar']} {me}")
+    st.write(f"**Анги / Эрх:** {my_data['role']}")
+    st.write(f"**Нийт найзууд:** {len(my_data['friends'])}")
+    if st.button("🚪 Системээс гарах", type="primary", use_container_width=True):
+        st.session_state.current_user = None
+        st.rerun()
+
+# ==========================================
+# ДООД ТАЛЫН ЦЭС (6 ТОВЧЛУУР)
+# ==========================================
+st.divider()
+n1, n2, n3, n4, n5, n6 = st.columns(6)
+with n1:
+    if st.button("🏠\nНүүр", use_container_width=True, type="primary" if st.session_state.nav=="feed" else "secondary"):
+        st.session_state.nav = "feed"
+        st.rerun()
+with n2:
+    f_lbl = f"👥\nНайз({req_count})" if req_count > 0 else "👥\nНайз"
+    if st.button(f_lbl, use_container_width=True, type="primary" if st.session_state.nav=="friends" else "secondary"):
+        st.session_state.nav = "friends"
+        st.rerun()
+with n3:
+    if st.button("💬\nЧат", use_container_width=True, type="primary" if st.session_state.nav=="messenger" else "secondary"):
+        st.session_state.nav = "messenger"
+        st.rerun()
+with n4:
+    if st.button("🎮\nТоглоом", use_container_width=True, type="primary" if st.session_state.nav=="game" else "secondary"):
+        st.session_state.nav = "game"
+        st.rerun()
+with n5:
+    if st.button("🤖\nAI Багш", use_container_width=True, type="primary" if st.session_state.nav=="ai" else "secondary"):
+        st.session_state.nav = "ai"
+        st.rerun()
+with n6:
+    if st.button("👤\nБи", use_container_width=True, type="primary" if st.session_state.nav=="profile" else "secondary"):
+        st.session_state.nav = "profile"
+        st.rerun()
