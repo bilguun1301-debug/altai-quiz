@@ -1,215 +1,152 @@
 import streamlit as st
-from google import genai
-from google.genai import types
-import json
-import os
-import time
+import google.generativeai as genai
 from datetime import datetime
 
 # Хуудасны үндсэн тохиргоо
-st.set_page_config(page_title="Алтай Quiz AI - Ухаалаг Сургууль", page_icon="🎓", layout="wide")
+st.set_page_config(page_title="Алтай Quiz AI", page_icon="🏔️", layout="wide")
 
-# ==========================================
-# Google AI API тохиргоо
-# ==========================================
-API_KEY = "AQ.Ab8RN6IajorphqVShE68N5dreUNfdkSmfDlFu93tElss_3d9Hg"
-client = genai.Client(api_key=API_KEY)
+# API холбох хэсэг
+if "GOOGLE_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+else:
+    st.error("⚠️ Streamlit Secrets хэсэгт GOOGLE_API_KEY тохируулаагүй байна!")
 
-# Файлуудын нэрс
-CHAT_DB_FILE = "school_chat_db.json"
-QUESTION_BANK_FILE = "question_bank.json"
+# Санах ой (Session State) эхлүүлэх
+if "users" not in st.session_state:
+    st.session_state.users = {}  # {нэвтрэх_нэр: {"password": "...", "avatar": "...", "class": "..."}}
+if "current_user" not in st.session_state:
+    st.session_state.current_user = None
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {"user": "Систем", "avatar": "🏔️", "text": "Алтай Quiz AI-ийн нэгдсэн чатад тавтай морил!", "time": "Одоо"}
+    ]
 
-def load_json(file_path, default_val):
-    if os.path.exists(file_path):
-        with open(file_path, "r", encoding="utf-8") as f:
-            try:
-                return json.load(f)
-            except:
-                return default_val
-    return default_val
+# --- 1. FACEBOOK ШИГ БҮРТГЭЛ БА НЭВТРЭХ ХЭСЭГ ---
+if st.session_state.current_user is None:
+    st.markdown("<h1 style='text-align: center; color: #1877F2;'>🏔️ Алтай Quiz AI</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>Ховд аймаг • Сурагчдын ухаалаг суралцахуй ба нэгдсэн сүлжээ</p>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        tab1, tab2 = st.tabs(["🔑 Нэвтрэх", "📝 Шинээр бүртгүүлэх"])
+        
+        with tab1:
+            login_name = st.text_input("Нэвтрэх нэр", key="l_name")
+            login_pass = st.text_input("Нууц үг", type="password", key="l_pass")
+            if st.button("Нэвтрэх", use_container_width=True, type="primary"):
+                if login_name in st.session_state.users and st.session_state.users[login_name]["password"] == login_pass:
+                    st.session_state.current_user = login_name
+                    st.rerun()
+                else:
+                    st.error("Нэвтрэх нэр эсвэл нууц үг буруу байна!")
+                    
+        with tab2:
+            reg_name = st.text_input("Өөрийн нэр (Зөвхөн 1 удаа үүснэ)", key="r_name")
+            reg_class = st.selectbox("Анги", ["6-р анги", "7-р анги", "8-р анги", "9-р анги", "Багш"])
+            reg_avatar = st.selectbox("Профайл зураг сонгох", ["🧑‍🎓", "👩‍🎓", "🦁", "🦅", "🐺", "🦊", "🐼", "🚀"])
+            reg_pass = st.text_input("Нууц үг зохиох", type="password", key="r_pass")
+            if st.button("Бүртгүүлэх", use_container_width=True):
+                if not reg_name or not reg_pass:
+                    st.warning("Нэр болон нууц үгээ бүрэн оруулна уу.")
+                elif reg_name in st.session_state.users:
+                    st.error("Энэ нэрээр өөр хүн бүртгүүлсэн байна. Өөр нэр сонгоно уу!")
+                else:
+                    st.session_state.users[reg_name] = {
+                        "password": reg_pass,
+                        "avatar": reg_avatar,
+                        "class": reg_class
+                    }
+                    st.success("Амжилттай бүртгэгдлээ! Одоо 'Нэвтрэх' хэсгээр орно уу.")
+    st.stop()
 
-def save_json(file_path, data):
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+# --- НЭВТЭРСНИЙ ДАРААХ ҮНДСЭН ХЭСЭГ ---
+user_info = st.session_state.users[st.session_state.current_user]
 
-# Чат болон асуултын санг ачаалах
-chats = load_json(CHAT_DB_FILE, {"Сургуулийн нэгдсэн групп": [], "6-р анги": [], "7-р анги": [], "8-р анги": [], "9-р анги": []})
+with st.sidebar:
+    st.markdown(f"### {user_info['avatar']} {st.session_state.current_user}")
+    st.caption(f"Анги: {user_info['class']}")
+    if st.button("🚪 Гарах", use_container_width=True):
+        st.session_state.current_user = None
+        st.rerun()
+    st.divider()
+    menu = st.radio("Цэс сонгох:", ["🤖 AI Багш", "💬 Сургуулийн Чат (Messenger)", "🎮 Алтай Quiz"])
 
-# --- ЗАГВАРЫН HEADER (Алтай Quiz AI) ---
-st.markdown("""
-    <div style="background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%); padding: 20px; border-radius: 10px; color: white; margin-bottom: 20px;">
-        <h1 style="margin:0; font-size: 28px;">🏔️ Алтай Quiz AI</h1>
-        <p style="margin:5px 0 0 0; opacity: 0.8;">Ховд аймаг • 6-9-р ангийн бодит цагийн AI суралцахуйн платформ</p>
-    </div>
-""", unsafe_allow_html=True)
-
-# --- ХЭРЭГЛЭГЧИЙН БҮРТГЭЛ БА ЦЭС (Хажуугийн самбар) ---
-st.sidebar.title("🎓 Платформын цэс")
-user_name = st.sidebar.text_input("Таны нэр:", value="Сурагч Бат")
-user_role = st.sidebar.selectbox("Хэрэглэгчийн төрөл:", ["Сурагч", "Багш"])
-user_class = st.sidebar.selectbox("Анги сонгох:", ["6-р анги", "7-р анги", "8-р анги", "9-р анги"])
-
-st.sidebar.divider()
-menu = st.sidebar.radio(
-    "Үндсэн цэс:",
-    ["🤖 AI Багш (Бүх хичээл)", "💬 Анги ба Сургуулийн Чат", "🎮 Алтай Quiz Тоглоом"]
-)
-
-# ==============================================================================
-# 1. AI БАГШ (Бүх хичээлээр алхам алхмаар тайлбарлах хэсэг)
-# ==============================================================================
-if menu == "🤖 AI Багш (Бүх хичээл)":
+# --- 2. AI БАГШ ---
+if menu == "🤖 AI Багш":
     st.header("🤖 AI Багш - Бүх хичээлийн ухаалаг туслах")
-    st.write("Математик, Физик, Хими, Түүх, Англи хэл болон бусад хичээлийн асуултаа алхам алхмаар тайлбарлуулаарай!")
+    subject = st.selectbox("Хичээлээ сонгоно уу:", ["Математик", "Монгол хэл", "Түүх", "Физик", "Англи хэл", "Мэдээлэл зүй"])
     
-    subject = st.selectbox(
-        "Хичээлээ сонгоно уу:",
-        ["Математик", "Физик", "Хими", "Англи хэл", "Монгол хэл", "Түүх / Нийгэм", "Мэдээллийн технологи"]
-    )
-    
-    system_instruction = f"""
-    Чи бол Монголын ЕБС-ийн сурагчдад зориулсан '{subject}' хичээлийн найрсаг AI багш.
-    Дүрэм:
-    1. Асуулт, бодлогыг заавал АЛХАМ АЛХМААР (Алхам 1, Алхам 2...) энгийн монгол хэлээр тайлбарла.
-    2. Математик, физик, химийн бодлого бол ашиглах ТОМЬЁО-г нь тусад нь ялгаж бич.
-    """
+    if "ai_chat" not in st.session_state:
+        st.session_state.ai_chat = []
 
-    if "ai_messages" not in st.session_state:
-        st.session_state.ai_messages = []
-
-    for msg in st.session_state.ai_messages:
+    for msg in st.session_state.ai_chat:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    if prompt := st.chat_input(f"{subject} хичээлийн асуултаа энд бичнэ үү..."):
-        st.session_state.ai_messages.append({"role": "user", "content": prompt})
+    prompt = st.chat_input(f"{subject} хичээлийн асуултаа энд бичнэ үү...")
+    if prompt:
+        st.session_state.ai_chat.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
-
+            
         with st.chat_message("assistant"):
-            with st.spinner("Бодож, тайлбар бэлтгэж байна..."):
-                try:
-                    response = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            system_instruction=system_instruction,
-                            temperature=0.4,
-                        )
-                    )
-                    st.markdown(response.text)
-                    st.session_state.ai_messages.append({"role": "assistant", "content": response.text})
-                except Exception as e:
-                    st.error(f"Алдаа гарлаа: {e}")
+            try:
+                model = genai.GenerativeModel("gemini-2.5-flash")
+                response = model.generate_content(f"Чи бол дунд ангийн сурагчдад зориулсан {subject} хичээлийн багш. Дараах асуултад ойлгомжтой, алхам алхмаар монгол хэлээр хариулна уу: {prompt}")
+                st.markdown(response.text)
+                st.session_state.ai_chat.append({"role": "assistant", "content": response.text})
+            except Exception as e:
+                st.error(f"AI холболтын алдаа: {e}. Secrets хэсэг дэх API түлхүүрээ шалгана уу.")
 
-# ==============================================================================
-# 2. СУРАГЧИД ХООРОНДОО ЧАТЛАХ (Анги болон Сургуулийн групп чат)
-# ==============================================================================
-elif menu == "💬 Анги ба Сургуулийн Чат":
-    st.header("💬 Сурагчид ба Багш нарын хамтын чат")
-    st.write("Сургуулийн нэгдсэн болон ангийнхаа групп чатаар дамжуулан мэдээллээ солилцоорой.")
+# --- 3. MESSENGER ШИГ НЭГДСЭН ЧАТ ---
+elif menu == "💬 Сургуулийн Чат (Messenger)":
+    st.header("💬 Сургуулийн Нэгдсэн Чат")
     
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        room = st.selectbox("Чатлах өрөөгөө сонгоно уу:", ["Сургуулийн нэгдсэн групп", user_class])
-    with col2:
-        st.write("")
-        st.write("")
-        if st.button("🔄 Шинэ зурвас шалгах"):
-            st.rerun()
-
-    room_messages = chats.get(room, [])
-
+    # Чат харагдах хэсэг
     chat_container = st.container(height=400)
     with chat_container:
-        if not room_messages:
-            st.info("Одоогоор зурвас алга. Эхний зурвасыг бичиж яриаг эхлүүлээрэй!")
-        for m in room_messages:
-            badge = "👨‍🏫 [Багш]" if m["role"] == "Багш" else "🎒 [Сурагч]"
-            st.markdown(f"**{badge} {m['sender']}** *({m['time']})*: {m['text']}")
+        for m in st.session_state.messages:
+            is_me = (m["user"] == st.session_state.current_user)
+            if is_me:
+                st.markdown(f"""
+                <div style='text-align: right; margin: 8px;'>
+                    <span style='background-color: #0084FF; color: white; padding: 8px 14px; border-radius: 18px; display: inline-block; max-width: 70%;'>
+                        {m['text']}
+                    </span>
+                    <div style='font-size: 11px; color: gray;'>{m['time']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div style='text-align: left; margin: 8px;'>
+                    <div style='font-size: 12px; font-weight: bold; color: #555;'>{m['avatar']} {m['user']}</div>
+                    <span style='background-color: #E4E6EB; color: black; padding: 8px 14px; border-radius: 18px; display: inline-block; max-width: 70%;'>
+                        {m['text']}
+                    </span>
+                    <div style='font-size: 11px; color: gray;'>{m['time']}</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-    new_msg = st.chat_input(f"'{room}' руу зурвас бичих...")
+    # Мессеж бичих хэсэг
+    new_msg = st.chat_input("Мессеж бичих...")
     if new_msg:
-        chats[room].append({
-            "sender": user_name,
-            "role": user_role,
+        now = datetime.now().strftime("%H:%M")
+        st.session_state.messages.append({
+            "user": st.session_state.current_user,
+            "avatar": user_info["avatar"],
             "text": new_msg,
-            "time": datetime.now().strftime("%H:%M")
+            "time": now
         })
-        save_json(CHAT_DB_FILE, chats)
         st.rerun()
 
-# ==============================================================================
-# 3. АЛТАЙ QUIZ ТОГЛООМ (Хурдны урамшуулалтай & Өөрөө хөгждөг сан)
-# ==============================================================================
-elif menu == "🎮 Алтай Quiz Тоглоом":
+# --- 4. QUIZ ХЭСЭГ ---
+elif menu == "🎮 Алтай Quiz":
     st.header("🎮 Алтай Quiz - Мэдлэг сорих сорил")
-    st.write("Монголын түүх, соёл болон IQ логик бодлогоор өрсөлдөх хэсэг. (15 секундэд амжиж хариулаад хурдны урамшуулал аваарай!)")
-
-    if "score" not in st.session_state:
-        st.session_state.score = 0
-    if "current_question" not in st.session_state:
-        st.session_state.current_question = None
-    if "start_time" not in st.session_state:
-        st.session_state.start_time = 0
-
-    st.metric(label="🏆 Таны нийт оноо", value=f"{st.session_state.score} оноо")
-
-    game_category = st.selectbox(
-        "Сорилын төрөл сонгох:",
-        ["Монголын түүх, соёл, өв уламжлал", "IQ хөгжүүлэх логик бодлогууд", "Ховд нутгийн түүх соёл"]
-    )
-
-    if st.button("🚀 Шинэ асуулт авах (AI асуулт зохиогч)"):
-        with st.spinner("Gemini AI шинэ асуулт зохиож, санд нэмж байна..."):
-            q_prompt = f"""
-            Монголын ЕБС-ийн 6-9 дүгээр ангийн сурагчдад зориулсан '{game_category}' сэдвээр 1 ширхэг сонирхолтой, өвөрмөц тест асуулт зохио.
-            Хариуг ЗӨВХӨН дараах JSON форматаар өг, өөр илүү тайлбар текст битгий бич:
-            {{
-                "question": "Асуултын текст",
-                "options": ["A хувилбар", "B хувилбар", "C хувилбар", "D хувилбар"],
-                "answer": "Зөв хувилбарын яг ижил текст",
-                "explanation": "Яагаад энэ хариу зөв болох тухай товч тайлбар"
-            }}
-            """
-            try:
-                res = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=q_prompt,
-                    config=types.GenerateContentConfig(response_mime_type="application/json")
-                )
-                new_q = json.loads(res.text)
-                
-                q_bank = load_json(QUESTION_BANK_FILE, [])
-                q_bank.append(new_q)
-                save_json(QUESTION_BANK_FILE, q_bank)
-
-                st.session_state.current_question = new_q
-                st.session_state.start_time = time.time()
-            except Exception as e:
-                st.error("Асуулт үүсгэхэд алдаа гарлаа, дахин товчлуурыг дарна уу.")
-
-    if st.session_state.current_question:
-        q = st.session_state.current_question
-        st.subheader(f"❓ {q['question']}")
-        
-        user_choice = st.radio("Сонголтууд:", q["options"], key="game_radio")
-
-        if st.button("⏱️ Хариуг илгээх (15 сек дотор)"):
-            elapsed_time = time.time() - st.session_state.start_time
-            
-            if elapsed_time > 15:
-                st.warning(f"⏰ Цаг дууссан! ({elapsed_time:.1f} секунд зарцуулсан байна). 15 секундаас хэтэрсэн тул оноо тооцогдохгүй.")
-            else:
-                if user_choice == q["answer"]:
-                    speed_bonus = int(max(0, 15 - elapsed_time)) * 2
-                    total_points = 10 + speed_bonus
-                    
-                    st.success(f"🎉 Зөв байна! Зарцуулсан хугацаа: {elapsed_time:.1f} сек. +{total_points} оноо (Суурь 10 + Хурдны урамшуулал {speed_bonus})!")
-                    st.info(f"💡 AI Ухаалаг тайлбар: {q['explanation']}")
-                    st.session_state.score += total_points
-                    st.session_state.current_question = None
-                else:
-                    st.error(f"❌ Буруу байна. Зөв хариулт нь: **{q['answer']}**.")
-                    st.info(f"💡 AI Ухаалаг тайлбар: {q['explanation']}")
-                    st.session_state.current_question = None
+    topic = st.selectbox("Сорилын төрөл:", ["Монголын түүх, соёл", "IQ логик бодлогууд", "Байгалийн ухаан"])
+    if st.button("🚀 Шинэ асуулт авах"):
+        try:
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            res = model.generate_content(f"'{topic}' сэдвээр 6-9-р ангийн сурагчдад зориулсан 1 сонирхолтой сонгох тест (A, B, C, D хувилбартай) зохиож өгнө үү. Зөв хариултыг нь хамгийн доор нь нууцлалтай бичээрэй.")
+            st.info(res.text)
+        except Exception as e:
+            st.error(f"Асуулт үүсгэхэд алдаа гарлаа: {e}")
