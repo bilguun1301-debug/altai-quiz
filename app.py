@@ -102,7 +102,6 @@ if menu == "🤖 AI Багш":
 elif menu == "💬 Сургуулийн Чат (Messenger)":
     st.header("💬 Сургуулийн Нэгдсэн Чат")
     
-    # Чат харагдах хэсэг
     chat_container = st.container(height=400)
     with chat_container:
         for m in st.session_state.messages:
@@ -127,7 +126,6 @@ elif menu == "💬 Сургуулийн Чат (Messenger)":
                 </div>
                 """, unsafe_allow_html=True)
 
-    # Мессеж бичих хэсэг
     new_msg = st.chat_input("Мессеж бичих...")
     if new_msg:
         now = datetime.now().strftime("%H:%M")
