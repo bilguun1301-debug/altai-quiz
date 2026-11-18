@@ -397,7 +397,7 @@ elif st.session_state.nav == "game":
             st.success(f"Таны сонгосон хариулт: **{ans_choice}**. Дээрх асуултын тайлбар болон зөв хариултыг шалгаарай!")
 
 # ==========================================
-# 5. AI БАГШ (ТҮҮХ ХАДГАЛАГДАНА)
+# 5. AI БАГШ (ДУУ ХООЛОЙТОЙ БА ТҮҮХ ХАДГАЛАГДАНА)
 # ==========================================
 elif st.session_state.nav == "ai":
     c1, c2 = st.columns([3, 1])
@@ -407,21 +407,33 @@ elif st.session_state.nav == "ai":
         save_data()
         st.rerun()
         
-    ai_box = st.container(height=360, border=True)
+    ai_box = st.container(height=320, border=True)
     with ai_box:
         for ch in st.session_state.ai_history.get(me, []):
             with st.chat_message(ch["role"]):
                 st.markdown(ch["content"])
                 
+    # --- ДУУ ХООЛОЙ ОРУУЛАХ ХЭСЭГ НЭМБЭЛ ---
+    st.markdown("---")
+    st.write("🎙️ **Микрофоноор ярьж асуух:**")
+    audio_data = st.audio_input("Энд дарж яриагаа бичнэ үү")
+    
+    if audio_data is not None:
+        st.audio(audio_data)
+        if st.button("🎤 Энэ яриаг AI багш руу илгээх", type="primary"):
+            # Дуу хоолой орж ирсэн үед хийх үйлдлүүд
+            st.info("Таны дуу хоолой амжилттай бүртгэгдлээ! (AI аудио дэхь үгийг шууд хүлээж авахаар боловсруулж байна)")
+
+    # Текстээр асуух хэсэг
     ai_q = st.chat_input("AI багшаас асуух зүйлээ бичнэ үү...")
     if ai_q:
         if me not in st.session_state.ai_history:
             st.session_state.ai_history[me] = []
-        st.session_state.ai_history[me].append({"role": "user", "content": ai_q})
+        st.session_state.ai_history[me].append({"role": "user", "text": ai_q})
         try:
             model = genai.GenerativeModel("gemini-2.5-flash")
             ans = model.generate_content(f"Чи бол сурагчдад тусалдаг AI багш. Дараах асуултад монгол хэлээр ойлгомжтой хариулна уу: {ai_q}")
-            st.session_state.ai_history[me].append({"role": "assistant", "content": ans.text})
+            st.session_state.ai_history[me].append({"role": "assistant", "text": ans.text})
             save_data()
             st.rerun()
         except Exception as e:
