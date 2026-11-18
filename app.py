@@ -10,6 +10,7 @@ st.set_page_config(page_title="Алтай Сүлжээ & AI", page_icon="🏔️
 
 TEACHER_SECRET_CODE = "ALTAI2026"  # Багш болж бүртгүүлэх нууц код
 DATA_FILE = "altai_data.json"      # Мэдээлэл хадгалах JSON файл
+MODEL_NAME = "gemini-3.8-flash"    # Шинэчилсэн Gemini загвар
 
 st.markdown("""
 <style>
@@ -40,7 +41,6 @@ st.markdown("""
         box-shadow: 0 2px 5px rgba(0,0,0,0.15);
     }
     
-    /* Жинхэнэ Messenger чат загвар */
     .msg-me-box {
         display: flex;
         justify-content: flex-end;
@@ -310,7 +310,7 @@ elif st.session_state.nav == "friends":
                             st.rerun()
 
 # ==========================================
-# 3. MESSENGER ЧАТ (САЙЖРУУЛСАН ЗАГВАР)
+# 3. MESSENGER ЧАТ
 # ==========================================
 elif st.session_state.nav == "messenger":
     st.subheader("💬 Messenger Чат")
@@ -325,7 +325,6 @@ elif st.session_state.nav == "messenger":
             if chat_key not in st.session_state.private_chats:
                 st.session_state.private_chats[chat_key] = []
                 
-            # Чат харуулах хэсэг (Messenger style)
             box = st.container(height=360, border=True)
             with box:
                 msgs = st.session_state.private_chats[chat_key]
@@ -353,7 +352,6 @@ elif st.session_state.nav == "messenger":
                         </div>
                         """, unsafe_allow_html=True)
                         
-            # Мессеж бичих хэсэг
             txt = st.chat_input(f"{target_friend}-д мессеж бичих...")
             if txt:
                 st.session_state.private_chats[chat_key].append({
@@ -425,7 +423,7 @@ elif st.session_state.nav == "game":
         
         if st.button("🚀 Шинэ асуулт авах", type="primary"):
             try:
-                model = genai.GenerativeModel("gemini-2.5-flash")
+                model = genai.GenerativeModel(MODEL_NAME)
                 prompt = f"'{q_topic}' сэдвээр дунд ангийн сурагчдад зориулсан 1 сонирхолтой сонгох тест (A, B, C, D хувилбартай) монгол хэлээр зохиож өгнө үү. Зөв хариултыг нь хамгийн доор нь 'ЗӨВ_ХАРИУЛТ: [Үсэг]' гэж бичээрэй."
                 res = model.generate_content(prompt)
                 st.session_state.quiz_question = res.text
@@ -477,7 +475,21 @@ elif st.session_state.nav == "ai":
     audio_data = st.audio_input("Энд дарж яриагаа бичнэ үү")
     if audio_data is not None:
         st.audio(audio_data)
-        st.success("Дуу хоолой амжилттай бүртгэгдлээ!")
+        if st.button("🎤 Дуу хоолойг AI багш руу илгээх", type="primary"):
+            if me not in st.session_state.ai_history:
+                st.session_state.ai_history[me] = []
+            st.session_state.ai_history[me].append({"role": "user", "content": "🎙️ [Дуут зурвас илгээв]"})
+            try:
+                model = genai.GenerativeModel(MODEL_NAME)
+                ans = model.generate_content([
+                    "Чи бол сурагчдад тусалдаг ухаалаг AI багш. Дараах аудио бичлэгийг сонсоод асуусан асуултад нь монгол хэлээр ойлгомжтой хариулна уу.",
+                    {"mime_type": "audio/wav", "data": audio_data.getvalue()}
+                ])
+                st.session_state.ai_history[me].append({"role": "assistant", "content": ans.text})
+                save_data()
+                st.rerun()
+            except Exception as e:
+                st.error(f"Алдаа: {e}")
 
     ai_q = st.chat_input("AI багшаас асуух зүйлээ бичнэ үү...")
     if ai_q:
@@ -485,7 +497,7 @@ elif st.session_state.nav == "ai":
             st.session_state.ai_history[me] = []
         st.session_state.ai_history[me].append({"role": "user", "content": ai_q})
         try:
-            model = genai.GenerativeModel("gemini-2.5-flash")
+            model = genai.GenerativeModel(MODEL_NAME)
             ans = model.generate_content(f"Чи бол сурагчдад тусалдаг AI багш. Дараах асуултад монгол хэлээр ойлгомжтой хариулна уу: {ai_q}")
             st.session_state.ai_history[me].append({"role": "assistant", "content": ans.text})
             save_data()
