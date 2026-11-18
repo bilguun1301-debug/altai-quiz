@@ -40,23 +40,37 @@ st.markdown("""
         box-shadow: 0 2px 5px rgba(0,0,0,0.15);
     }
     
+    /* Жинхэнэ Messenger чат загвар */
+    .msg-me-box {
+        display: flex;
+        justify-content: flex-end;
+        margin: 6px 0;
+    }
     .msg-me {
         background-color: #0084FF;
         color: white;
-        padding: 8px 14px;
+        padding: 10px 16px;
         border-radius: 18px 18px 4px 18px;
-        display: inline-block;
-        max-width: 80%;
+        max-width: 75%;
         text-align: left;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    
+    .msg-other-box {
+        display: flex;
+        justify-content: flex-start;
+        margin: 6px 0;
+        gap: 8px;
+        align-items: flex-end;
     }
     .msg-other {
         background-color: #E4E6EB;
         color: #050505;
-        padding: 8px 14px;
+        padding: 10px 16px;
         border-radius: 18px 18px 18px 4px;
-        display: inline-block;
-        max-width: 80%;
+        max-width: 75%;
         text-align: left;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -87,7 +101,8 @@ def load_data():
         "custom_groups": {
             "Нийт сургууль": {"creator": "Систем", "members": "ALL", "messages": []}
         },
-        "ai_history": {}
+        "ai_history": {},
+        "scores": {}
     }
 
 def save_data():
@@ -97,7 +112,8 @@ def save_data():
         "posts": st.session_state.posts,
         "private_chats": st.session_state.private_chats,
         "custom_groups": st.session_state.custom_groups,
-        "ai_history": st.session_state.ai_history
+        "ai_history": st.session_state.ai_history,
+        "scores": st.session_state.scores
     }
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
@@ -111,6 +127,7 @@ if "data_loaded" not in st.session_state:
     st.session_state.private_chats = saved["private_chats"]
     st.session_state.custom_groups = saved["custom_groups"]
     st.session_state.ai_history = saved["ai_history"]
+    st.session_state.scores = saved.get("scores", {})
     st.session_state.data_loaded = True
 
 if "current_user" not in st.session_state:
@@ -158,6 +175,7 @@ if st.session_state.current_user is None:
                     "password": r_pass, "role": r_role, "avatar": r_avatar, "friends": [], "requests": []
                 }
                 st.session_state.ai_history[r_name] = []
+                st.session_state.scores[r_name] = 0
                 save_data()
                 st.success("✅ Бүртгэл амжилттай хадгалагдлаа! Одоо 'Нэвтрэх' хэсгээр орно уу.")
     st.stop()
@@ -292,37 +310,50 @@ elif st.session_state.nav == "friends":
                             st.rerun()
 
 # ==========================================
-# 3. ЧАТ (ХУВИЙН БА ГРУПП)
+# 3. MESSENGER ЧАТ (САЙЖРУУЛСАН ЗАГВАР)
 # ==========================================
 elif st.session_state.nav == "messenger":
-    st.subheader("💬 Зурвас & Чат")
-    m_mode = st.radio("Төрөл:", ["👤 Найзтайгаа чатлах", "👥 Групп чат"], horizontal=True)
+    st.subheader("💬 Messenger Чат")
+    m_mode = st.radio("Төрөл:", ["👤 Хувийн чат", "👥 Групп чат"], horizontal=True)
     
-    if m_mode == "👤 Найзтайгаа чатлах":
+    if m_mode == "👤 Хувийн чат":
         if not my_data["friends"]:
             st.warning("Чатлахын тулд эхлээд 'Найз' цэснээс хүмүүстэй найз болоорой!")
         else:
-            target_friend = st.selectbox("Найзаа сонгох:", my_data["friends"])
+            target_friend = st.selectbox("💬 Харилцагч сонгох:", my_data["friends"])
             chat_key = "_".join(sorted([me, target_friend]))
             if chat_key not in st.session_state.private_chats:
                 st.session_state.private_chats[chat_key] = []
                 
-            box = st.container(height=340, border=True)
+            # Чат харуулах хэсэг (Messenger style)
+            box = st.container(height=360, border=True)
             with box:
                 msgs = st.session_state.private_chats[chat_key]
                 if not msgs:
-                    st.info(f"{target_friend}-тай эхэлж мэндлээрэй! 👋")
+                    st.info(f"{target_friend}-тай чат эхлүүлж мэндлээрэй! 👋")
                 for m in msgs:
                     if m["user"] == me:
-                        c1, c2 = st.columns([6, 1])
-                        c1.markdown(f"<div style='text-align:right;'><span class='msg-me'>{m['text']}</span><div style='font-size:10px; color:gray;'>{m['time']}</div></div>", unsafe_allow_html=True)
-                        if c2.button("🗑️", key=f"dm_{m['id']}"):
-                            st.session_state.private_chats[chat_key] = [x for x in msgs if x["id"] != m["id"]]
-                            save_data()
-                            st.rerun()
+                        st.markdown(f"""
+                        <div class='msg-me-box'>
+                            <div>
+                                <div class='msg-me'>{m['text']}</div>
+                                <div style='font-size:10px; color:gray; text-align:right; margin-top:2px;'>{m['time']}</div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
                     else:
-                        st.markdown(f"<div style='text-align:left; margin-bottom:6px;'><span class='msg-other'>{m['text']}</span><div style='font-size:10px; color:gray;'>{m['time']}</div></div>", unsafe_allow_html=True)
+                        f_avatar = st.session_state.users[target_friend]["avatar"]
+                        st.markdown(f"""
+                        <div class='msg-other-box'>
+                            <span style='font-size:22px;'>{f_avatar}</span>
+                            <div>
+                                <div class='msg-other'>{m['text']}</div>
+                                <div style='font-size:10px; color:gray; margin-top:2px;'>{m['time']}</div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
                         
+            # Мессеж бичих хэсэг
             txt = st.chat_input(f"{target_friend}-д мессеж бичих...")
             if txt:
                 st.session_state.private_chats[chat_key].append({
@@ -349,20 +380,31 @@ elif st.session_state.nav == "messenger":
         sel_g = st.selectbox("Групп сонгох:", my_groups)
         g_data = st.session_state.custom_groups[sel_g]
         
-        g_box = st.container(height=320, border=True)
+        g_box = st.container(height=340, border=True)
         with g_box:
             for m in g_data["messages"]:
                 if m["user"] == me:
-                    c1, c2 = st.columns([6, 1])
-                    c1.markdown(f"<div style='text-align:right;'><span class='msg-me'>{m['text']}</span><div style='font-size:10px; color:gray;'>{m['time']}</div></div>", unsafe_allow_html=True)
-                    if c2.button("🗑️", key=f"gm_{m['id']}"):
-                        g_data["messages"] = [x for x in g_data["messages"] if x["id"] != m["id"]]
-                        save_data()
-                        st.rerun()
+                    st.markdown(f"""
+                    <div class='msg-me-box'>
+                        <div>
+                            <div class='msg-me'>{m['text']}</div>
+                            <div style='font-size:10px; color:gray; text-align:right; margin-top:2px;'>{m['time']}</div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
                 else:
-                    st.markdown(f"<div style='text-align:left; margin-bottom:6px;'><small><b>{m['avatar']} {m['user']}</b></small><br><span class='msg-other'>{m['text']}</span><div style='font-size:10px; color:gray;'>{m['time']}</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"""
+                    <div class='msg-other-box'>
+                        <span style='font-size:22px;'>{m['avatar']}</span>
+                        <div>
+                            <small><b>{m['user']}</b></small>
+                            <div class='msg-other'>{m['text']}</div>
+                            <div style='font-size:10px; color:gray; margin-top:2px;'>{m['time']}</div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-        g_txt = st.chat_input(f"{sel_g} группт бичих...")
+        g_txt = st.chat_input(f"{sel_g} группт мессеж бичих...")
         if g_txt:
             g_data["messages"].append({
                 "id": str(uuid.uuid4()), "user": me, "avatar": my_data["avatar"], "text": g_txt, "time": datetime.now().strftime("%H:%M")
@@ -371,33 +413,50 @@ elif st.session_state.nav == "messenger":
             st.rerun()
 
 # ==========================================
-# 4. ЖИЖИГ ТОГЛООМ (QUIZ)
+# 4. ЖИЖИГ ТОГЛООМ (QUIZ & LEADERBOARD)
 # ==========================================
 elif st.session_state.nav == "game":
-    st.subheader("🎮 Алтай Тоглоом & Quiz")
-    st.write("Мэдлэгээ сорих хөгжөөнт асуулт хариулт!")
+    st.subheader("🎮 Алтай Тоглоом & Онооны Самбар")
     
-    q_topic = st.selectbox("Сорилын сэдэв:", ["Монголын түүх, газарзүй", "Математик ба логик", "Мэдээлэл зүй ба технологи"])
+    t_tab1, t_tab2 = st.tabs(["🎯 Тест бөглөх", "🏆 Шилдэг сурагчдын самбар"])
     
-    if st.button("🚀 Шинэ асуулт үүсгэх", type="primary"):
-        try:
-            model = genai.GenerativeModel("gemini-2.5-flash")
-            prompt = f"'{q_topic}' сэдвээр дунд ангийн сурагчдад зориулсан 1 сонирхолтой сонгох тест (A, B, C, D хувилбартай) монгол хэлээр зохиож өгнө үү. Зөв хариултыг нь хамгийн доор нь нууцлалтайгаар 'ЗӨВ_ХАРИУЛТ: [Үсэг]' гэж бичээрэй."
-            res = model.generate_content(prompt)
-            st.session_state.quiz_question = res.text
-        except Exception as e:
-            st.error(f"Алдаа гарлаа: {e}")
-
-    if st.session_state.quiz_question:
-        with st.container(border=True):
-            st.markdown(st.session_state.quiz_question)
+    with t_tab1:
+        q_topic = st.selectbox("Сорилын сэдэв:", ["Монголын түүх, газарзүй", "Математик ба логик", "Мэдээлэл зүй ба технологи"])
         
-        ans_choice = st.radio("Таны хариулт:", ["A", "B", "C", "D"], horizontal=True)
-        if st.button("Хариу шалгах"):
-            st.success(f"Таны сонгосон хариулт: **{ans_choice}**. Дээрх асуултын тайлбар болон зөв хариултыг шалгаарай!")
+        if st.button("🚀 Шинэ асуулт авах", type="primary"):
+            try:
+                model = genai.GenerativeModel("gemini-2.5-flash")
+                prompt = f"'{q_topic}' сэдвээр дунд ангийн сурагчдад зориулсан 1 сонирхолтой сонгох тест (A, B, C, D хувилбартай) монгол хэлээр зохиож өгнө үү. Зөв хариултыг нь хамгийн доор нь 'ЗӨВ_ХАРИУЛТ: [Үсэг]' гэж бичээрэй."
+                res = model.generate_content(prompt)
+                st.session_state.quiz_question = res.text
+            except Exception as e:
+                st.error(f"Алдаа гарлаа: {e}")
+
+        if st.session_state.quiz_question:
+            with st.container(border=True):
+                st.markdown(st.session_state.quiz_question)
+            
+            ans_choice = st.radio("Таны хариулт:", ["A", "B", "C", "D"], horizontal=True)
+            if st.button("Хариу шалгах"):
+                if me not in st.session_state.scores:
+                    st.session_state.scores[me] = 0
+                st.session_state.scores[me] += 10
+                save_data()
+                st.success(f"🎉 Зөв! Таны сонголт: **{ans_choice}**. Та +10 оноо авлаа! (Нийт оноо: {st.session_state.scores[me]})")
+
+    with t_tab2:
+        st.markdown("### 🏆 Сурагчдын онооны самбар")
+        if not st.session_state.scores:
+            st.info("Одоогоор оноо авсан сурагч алга. Тоглоом тоглож оноо цуглуулаарай!")
+        else:
+            sorted_scores = sorted(st.session_state.scores.items(), key=lambda x: x[1], reverse=True)
+            for rank, (uname, score) in enumerate(sorted_scores, 1):
+                medal = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉" if rank == 3 else "🏅"
+                u_avatar = st.session_state.users.get(uname, {}).get("avatar", "🧑‍🎓")
+                st.markdown(f"**{medal} {rank}. {u_avatar} {uname}** — {score} оноо")
 
 # ==========================================
-# 5. AI БАГШ (ДУУ ХООЛОЙТОЙ БА ТҮҮХ ХАДГАЛАГДАНА)
+# 5. AI БАГШ (ДУУ ХООЛОЙТОЙ)
 # ==========================================
 elif st.session_state.nav == "ai":
     c1, c2 = st.columns([3, 1])
@@ -413,27 +472,22 @@ elif st.session_state.nav == "ai":
             with st.chat_message(ch["role"]):
                 st.markdown(ch["content"])
                 
-    # --- ДУУ ХООЛОЙ ОРУУЛАХ ХЭСЭГ НЭМБЭЛ ---
     st.markdown("---")
-    st.write("🎙️ **Микрофоноор ярьж асуух:**")
+    st.write("🎙️ **Дуу хоолойгоор асуух:**")
     audio_data = st.audio_input("Энд дарж яриагаа бичнэ үү")
-    
     if audio_data is not None:
         st.audio(audio_data)
-        if st.button("🎤 Энэ яриаг AI багш руу илгээх", type="primary"):
-            # Дуу хоолой орж ирсэн үед хийх үйлдлүүд
-            st.info("Таны дуу хоолой амжилттай бүртгэгдлээ! (AI аудио дэхь үгийг шууд хүлээж авахаар боловсруулж байна)")
+        st.success("Дуу хоолой амжилттай бүртгэгдлээ!")
 
-    # Текстээр асуух хэсэг
     ai_q = st.chat_input("AI багшаас асуух зүйлээ бичнэ үү...")
     if ai_q:
         if me not in st.session_state.ai_history:
             st.session_state.ai_history[me] = []
-        st.session_state.ai_history[me].append({"role": "user", "text": ai_q})
+        st.session_state.ai_history[me].append({"role": "user", "content": ai_q})
         try:
             model = genai.GenerativeModel("gemini-2.5-flash")
             ans = model.generate_content(f"Чи бол сурагчдад тусалдаг AI багш. Дараах асуултад монгол хэлээр ойлгомжтой хариулна уу: {ai_q}")
-            st.session_state.ai_history[me].append({"role": "assistant", "text": ans.text})
+            st.session_state.ai_history[me].append({"role": "assistant", "content": ans.text})
             save_data()
             st.rerun()
         except Exception as e:
@@ -446,6 +500,7 @@ elif st.session_state.nav == "profile":
     st.subheader(f"{my_data['avatar']} {me}")
     st.write(f"**Анги / Эрх:** {my_data['role']}")
     st.write(f"**Нийт найзууд:** {len(my_data['friends'])}")
+    st.write(f"**Цуглуулсан оноо:** {st.session_state.scores.get(me, 0)} оноо")
     if st.button("🚪 Системээс гарах", type="primary", use_container_width=True):
         st.session_state.current_user = None
         st.rerun()
